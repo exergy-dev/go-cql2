@@ -580,3 +580,67 @@ func TestWithTextStyle_Verbose(t *testing.T) {
 		t.Fatalf("verbose round-trip changed AST")
 	}
 }
+
+// TestArrayPredicateLiterals_CrossCodecRoundTrip pins issue #5: empty and
+// single-element arrays in A_* predicates survive text<->JSON round trips.
+func TestArrayPredicateLiterals_CrossCodecRoundTrip(t *testing.T) {
+	for _, in := range []string{
+		`A_CONTAINS(tags, ('a'))`,
+		`A_OVERLAPS(tags, ())`,
+	} {
+		t.Run("text/"+in, func(t *testing.T) {
+			n1, err := cqltext.Parse(in)
+			if err != nil {
+				t.Fatalf("text.Parse(%q): %v", in, err)
+			}
+			j, err := cqljson.Encode(n1)
+			if err != nil {
+				t.Fatalf("json.Encode: %v", err)
+			}
+			n2, err := cqljson.Parse(j)
+			if err != nil {
+				t.Fatalf("json.Parse(%s): %v", j, err)
+			}
+			out, err := cqltext.Encode(n2)
+			if err != nil {
+				t.Fatalf("text.Encode: %v", err)
+			}
+			n3, err := cqltext.Parse(out)
+			if err != nil {
+				t.Fatalf("text.Parse(%q): %v", out, err)
+			}
+			if !cql2.Equal(n1, n2) || !cql2.Equal(n1, n3) {
+				t.Fatalf("round-trip mismatch: %q -> %s -> %q", in, j, out)
+			}
+		})
+	}
+	for _, in := range []string{
+		`{"op":"a_contains","args":[{"property":"tags"},["a"]]}`,
+		`{"op":"a_overlaps","args":[{"property":"tags"},[]]}`,
+	} {
+		t.Run("json/"+in, func(t *testing.T) {
+			n1, err := cqljson.Parse([]byte(in))
+			if err != nil {
+				t.Fatalf("json.Parse(%s): %v", in, err)
+			}
+			txt, err := cqltext.Encode(n1)
+			if err != nil {
+				t.Fatalf("text.Encode: %v", err)
+			}
+			n2, err := cqltext.Parse(txt)
+			if err != nil {
+				t.Fatalf("text.Parse(%q): %v", txt, err)
+			}
+			j, err := cqljson.Encode(n2)
+			if err != nil {
+				t.Fatalf("json.Encode: %v", err)
+			}
+			if !cql2.Equal(n1, n2) {
+				t.Fatalf("round-trip mismatch: %s -> %q", in, txt)
+			}
+			if string(j) != in {
+				t.Fatalf("json = %s, want %s", j, in)
+			}
+		})
+	}
+}
