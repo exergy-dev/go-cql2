@@ -149,7 +149,7 @@ func equal(a, b Node, verbatim bool) bool {
 	case *Unbounded:
 		return true
 	case *GeomLit:
-		return geomEqual(x.Geom, b.(*GeomLit).Geom)
+		return geom.EqualsExact(x.Geom, b.(*GeomLit).Geom)
 	case *BBoxLit:
 		return slices.Equal(x.Coords, b.(*BBoxLit).Coords)
 	case *ArrayLit:
@@ -227,76 +227,4 @@ func Clone(n Node) Node {
 		return &FunctionCall{Name: x.Name, Args: mapSlice(x.Args, Clone)}
 	}
 	return n
-}
-
-// geomEqual compares two gts geometries structurally — same concrete type,
-// same layout, same flat coordinates, same children for collection types.
-// Cannot use reflect.DeepEqual because baseGeom embeds an atomic.Pointer
-// for the lazy envelope cache whose contents diverge after first read.
-func geomEqual(a, b geom.Geometry) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	if a.Type() != b.Type() || a.Layout() != b.Layout() {
-		return false
-	}
-	switch x := a.(type) {
-	case *geom.Point:
-		y := b.(*geom.Point)
-		if x.IsEmpty() != y.IsEmpty() {
-			return false
-		}
-		return slices.Equal(x.FlatCoords(), y.FlatCoords())
-	case *geom.LineString:
-		return slices.Equal(x.FlatCoords(), b.(*geom.LineString).FlatCoords())
-	case *geom.LinearRing:
-		return slices.Equal(x.FlatCoords(), b.(*geom.LinearRing).FlatCoords())
-	case *geom.Polygon:
-		y := b.(*geom.Polygon)
-		if x.NumRings() != y.NumRings() {
-			return false
-		}
-		for i := 0; i < x.NumRings(); i++ {
-			if !slices.Equal(x.Ring(i), y.Ring(i)) {
-				return false
-			}
-		}
-		return true
-	case *geom.MultiPoint:
-		return slices.Equal(x.FlatCoords(), b.(*geom.MultiPoint).FlatCoords())
-	case *geom.MultiLineString:
-		y := b.(*geom.MultiLineString)
-		if x.NumGeometries() != y.NumGeometries() {
-			return false
-		}
-		for i := 0; i < x.NumGeometries(); i++ {
-			if !geomEqual(x.LineStringAt(i), y.LineStringAt(i)) {
-				return false
-			}
-		}
-		return true
-	case *geom.MultiPolygon:
-		y := b.(*geom.MultiPolygon)
-		if x.NumGeometries() != y.NumGeometries() {
-			return false
-		}
-		for i := 0; i < x.NumGeometries(); i++ {
-			if !geomEqual(x.PolygonAt(i), y.PolygonAt(i)) {
-				return false
-			}
-		}
-		return true
-	case *geom.GeometryCollection:
-		y := b.(*geom.GeometryCollection)
-		if x.NumGeometries() != y.NumGeometries() {
-			return false
-		}
-		for i := 0; i < x.NumGeometries(); i++ {
-			if !geomEqual(x.GeometryAt(i), y.GeometryAt(i)) {
-				return false
-			}
-		}
-		return true
-	}
-	return reflect.DeepEqual(a, b)
 }

@@ -94,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PositionMap.Of(n)` is now `PositionMap.Get(n)` for consistency with
   Go's standard accessor naming on `(value, ok)` returns. Final API
   rename before v1.0.
+- `GeomLit` equality (`Equal`, `EqualVerbatim`) now delegates to
+  go-topology-suite's `geom.EqualsExact` instead of a private
+  `FlatCoords()`-based comparison. go-cql2 now requires go-topology-suite
+  `v0.1.3` or later, which provides it; this fixes the build after
+  `go get -u` moved users to a gts release without `FlatCoords()` (#4).
+  Geometries with NaN ordinates now compare equal to themselves
+  (previously NaN != NaN made such a geometry unequal to itself).
 
 ### Removed
 - `cql2.StyleMinimal` — was exported but never implemented. Drop before v1
