@@ -2,6 +2,7 @@ package cql2_test
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	cql2 "github.com/exergy-dev/go-cql2"
@@ -105,5 +106,27 @@ func TestGeometryEmbeddedInStruct(t *testing.T) {
 	}
 	if r2.ID != 7 {
 		t.Fatalf("id round-trip: got %d", r2.ID)
+	}
+}
+
+// TestGeomLitEqualCompareZAndNaN checks that GeomLit equality compares the
+// full coordinate stride (Z counts) and treats NaN ordinates as equal to
+// themselves, per geom.EqualsExact.
+func TestGeomLitEqualCompareZAndNaN(t *testing.T) {
+	ls := func(z float64) *cql2.GeomLit {
+		return &cql2.GeomLit{Geom: geom.NewLineString(nil, []geom.XYZ{{X: 0, Y: 0, Z: 1}, {X: 1, Y: 1, Z: z}})}
+	}
+	if !cql2.Equal(ls(2), ls(2)) {
+		t.Errorf("identical XYZ geometries should be Equal")
+	}
+	if cql2.Equal(ls(2), ls(3)) {
+		t.Errorf("XYZ geometries differing only in Z should not be Equal")
+	}
+	if !cql2.Equal(ls(math.NaN()), ls(math.NaN())) {
+		t.Errorf("geometries with NaN ordinates should equal themselves")
+	}
+	nan := &cql2.GeomLit{Geom: geom.NewPointXYZ(nil, geom.XYZ{X: 1, Y: 2, Z: math.NaN()})}
+	if !cql2.Equal(nan, nan) {
+		t.Errorf("NaN-Z point should equal itself")
 	}
 }
