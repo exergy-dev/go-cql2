@@ -37,6 +37,8 @@ func seedSyntheticText(f *testing.F) {
 		"a + b * c = 10",
 		"CASEI(a) = CASEI('foo')",
 		"fn(a, b, 'c')",
+		"A_CONTAINS(tags, ('a'))",
+		"A_OVERLAPS(tags, ())",
 	}
 	for _, s := range seeds {
 		f.Add(s)

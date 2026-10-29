@@ -646,3 +646,74 @@ func roundTrip(t *testing.T, n cql2.Node) {
 		t.Fatalf("round-trip mismatch.\nencoded: %s\nbefore: %#v\nafter:  %#v", encoded, n, n2)
 	}
 }
+
+// TestParse_ArrayPredicateLiterals pins issue #5: a parenthesised operand of
+// an array predicate is always an array literal, including "('a')" and "()".
+func TestParse_ArrayPredicateLiterals(t *testing.T) {
+	names := []string{"A_CONTAINS", "a_containedby", "A_Equals", "a_overlaps"}
+	operands := []struct {
+		src     string
+		wantLen int // -1 means a bare PropertyRef, not an ArrayLit
+	}{
+		{`('a')`, 1},
+		{`('a', 'b')`, 2},
+		{`()`, 0},
+		{`(1)`, 1},
+		{`other`, -1},
+	}
+	for _, name := range names {
+		for _, o := range operands {
+			src := name + `(tags, ` + o.src + `)`
+			t.Run(src, func(t *testing.T) {
+				n := mustParse(t, src)
+				op, ok := n.(*cql2.Op)
+				if !ok || len(op.Args) != 2 {
+					t.Fatalf("want 2-arg Op, got %#v", n)
+				}
+				if _, ok := op.Args[0].(*cql2.PropertyRef); !ok {
+					t.Fatalf("arg 0 = %T, want *PropertyRef", op.Args[0])
+				}
+				if o.wantLen < 0 {
+					if _, ok := op.Args[1].(*cql2.PropertyRef); !ok {
+						t.Fatalf("arg 1 = %T, want *PropertyRef", op.Args[1])
+					}
+				} else {
+					arr, ok := op.Args[1].(*cql2.ArrayLit)
+					if !ok {
+						t.Fatalf("arg 1 = %T, want *ArrayLit", op.Args[1])
+					}
+					if len(arr.Elements) != o.wantLen {
+						t.Fatalf("len = %d, want %d", len(arr.Elements), o.wantLen)
+					}
+				}
+				roundTrip(t, n)
+			})
+		}
+	}
+
+	// Ordinary grouping elsewhere is unchanged.
+	n := mustParse(t, `(1 + 2) = 3`)
+	op, ok := n.(*cql2.Op)
+	if !ok || op.Op != cql2.OpEq {
+		t.Fatalf("want = Op, got %#v", n)
+	}
+	if add, ok := op.Args[0].(*cql2.Op); !ok || add.Op != cql2.OpAdd {
+		t.Fatalf("lhs = %#v, want + Op", op.Args[0])
+	}
+
+	// Non-array function-style operators are unaffected.
+	n = mustParse(t, `S_INTERSECTS(geom, POINT(1 2))`)
+	op, ok = n.(*cql2.Op)
+	if !ok || op.Op != cql2.OpSIntersects {
+		t.Fatalf("want S_INTERSECTS Op, got %#v", n)
+	}
+	if _, ok := op.Args[1].(*cql2.GeomLit); !ok {
+		t.Fatalf("arg 1 = %T, want *GeometryLit", op.Args[1])
+	}
+
+	// Unterminated array literal reports the array-specific error.
+	if _, err := Parse(`A_CONTAINS(tags, ('a' 'b'))`); err == nil ||
+		!strings.Contains(err.Error(), "expected ',' or ')' in array literal") {
+		t.Fatalf("err = %v, want array literal error", err)
+	}
+}

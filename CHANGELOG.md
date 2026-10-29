@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   property names.
 - BBOX arity errors are now anchored at the BBOX keyword position rather than
   after the closing paren.
+- Single-element and empty array literals in `A_CONTAINS`, `A_CONTAINEDBY`,
+  `A_EQUALS`, and `A_OVERLAPS` now parse as `ArrayLit` in CQL2-Text (#5).
+  Previously `('a')` parsed as a grouped `StringLit` and `()` was rejected,
+  so the encoder's output for such arrays did not round-trip. A parenthesised
+  operand of these predicates is now always an array literal, so
+  `A_CONTAINS((tags), …)` yields a one-element `ArrayLit` wrapping the
+  property reference, matching the grammar (which has no parenthesised
+  `arrayExpression`).
 
 ### Added
 - Text string literals now accept the backslash escape sequences required

@@ -469,6 +469,15 @@ var operatorFunctionNames = func() map[string]cql2.Operator {
 	return m
 }()
 
+// arrayPredicates are the function-style operators whose arguments are
+// arrayExpressions. Their parenthesised operands are always array literals,
+// so "('a')" is a one-element array and "()" an empty one rather than a
+// grouped expression.
+var arrayPredicates = map[cql2.Operator]bool{
+	cql2.OpAContains: true, cql2.OpAContainedBy: true,
+	cql2.OpAEquals: true, cql2.OpAOverlaps: true,
+}
+
 var geometryKeywords = map[string]bool{
 	"point": true, "linestring": true, "polygon": true,
 	"multipoint": true, "multilinestring": true, "multipolygon": true,
@@ -1342,6 +1351,12 @@ func (p *parser) parseFunctionCall(name token) (cql2.Node, error) {
 	if err := p.expectKind(tokLParen, "("); err != nil {
 		return nil, err
 	}
+	lower := strings.ToLower(name.text)
+	op, isOp := operatorFunctionNames[lower]
+	parseArg := p.parseExpression
+	if isOp && arrayPredicates[op] {
+		parseArg = p.parseArrayOperand
+	}
 	var args []cql2.Node
 	t, err := p.peekToken()
 	if err != nil {
@@ -1349,7 +1364,7 @@ func (p *parser) parseFunctionCall(name token) (cql2.Node, error) {
 	}
 	if t.kind != tokRParen {
 		for {
-			a, err := p.parseExpression()
+			a, err := parseArg()
 			if err != nil {
 				return nil, err
 			}
@@ -1369,8 +1384,7 @@ func (p *parser) parseFunctionCall(name token) (cql2.Node, error) {
 		return nil, err
 	}
 	// Desugar known operator-keyword functions.
-	lower := strings.ToLower(name.text)
-	if op, ok := operatorFunctionNames[lower]; ok {
+	if isOp {
 		return &cql2.Op{Op: op, Args: args}, nil
 	}
 	// Reserved keywords (AND, OR, NOT, BETWEEN, IN, …) cannot be used
@@ -1381,6 +1395,55 @@ func (p *parser) parseFunctionCall(name token) (cql2.Node, error) {
 		return nil, p.syntaxErrorAt(name.pos, fmt.Sprintf("reserved keyword %q cannot be used as a function name", name.text), name.text)
 	}
 	return &cql2.FunctionCall{Name: name.text, Args: args}, nil
+}
+
+// parseArrayOperand parses one argument of an array predicate. A leading
+// "(" always starts an array literal (arrayLiteral = "(" ")" | "(" arrayElement
+// ("," arrayElement)* ")"), so "()" and "(x)" yield an ArrayLit of zero and
+// one elements. Anything else is an ordinary expression (property, function).
+func (p *parser) parseArrayOperand() (cql2.Node, error) {
+	lp, err := p.peekToken()
+	if err != nil {
+		return nil, err
+	}
+	if lp.kind != tokLParen {
+		return p.parseExpression()
+	}
+	_, _ = p.consumeToken()
+	// Non-nil so "()" yields an empty, not nil, element list.
+	elems := []cql2.Node{}
+	t, err := p.peekToken()
+	if err != nil {
+		return nil, err
+	}
+	if t.kind != tokRParen {
+		for {
+			v, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			elems = append(elems, v)
+			nxt, err := p.peekToken()
+			if err != nil {
+				return nil, err
+			}
+			if nxt.kind == tokComma {
+				_, _ = p.consumeToken()
+				continue
+			}
+			break
+		}
+	}
+	rp, err := p.consumeToken()
+	if err != nil {
+		return nil, err
+	}
+	if rp.kind != tokRParen {
+		return nil, p.syntaxErrorAt(rp.pos, "expected ',' or ')' in array literal", rp.text)
+	}
+	arr := &cql2.ArrayLit{Elements: elems}
+	p.recordPos(arr, lp.pos)
+	return arr, nil
 }
 
 func (p *parser) expectKind(k tokKind, want string) error {
