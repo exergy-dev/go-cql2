@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -10,8 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        go: ['1.23', '1.24', '1.25']
+        # Oldest supported Go (go.mod) and current Go on Linux; current on macOS.
+        include:
+          - { os: ubuntu-latest, go: '1.23' }
+          - { os: ubuntu-latest, go: '1.25' }
+          - { os: macos-latest, go: '1.25' }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
