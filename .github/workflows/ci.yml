@@ -15,8 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: ubuntu-latest, go: '1.25' }
+        # Pushes and pull requests run current Go on Linux; a manual run
+        # (workflow_dispatch) adds the oldest supported Go (go.mod) and macOS.
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"os":"ubuntu-latest","go":"1.25"},{"os":"ubuntu-latest","go":"1.23"},{"os":"macos-latest","go":"1.25"}]' || '[{"os":"ubuntu-latest","go":"1.25"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
