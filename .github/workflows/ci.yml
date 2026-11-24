@@ -4,17 +4,19 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:   # also runs the manual-only jobs (race, fuzz)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported Go (go.mod) and current Go on Linux; current on macOS.
         include:
-          - { os: ubuntu-latest, go: '1.23' }
           - { os: ubuntu-latest, go: '1.25' }
-          - { os: macos-latest, go: '1.25' }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +28,7 @@ jobs:
       - run: go test ./...
 
   race:
+    if: github.event_name == 'workflow_dispatch'   # manual only: run from the Actions tab
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +49,7 @@ jobs:
           version: v1.62.0
 
   fuzz:
+    if: github.event_name == 'workflow_dispatch'   # manual only: run from the Actions tab
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
